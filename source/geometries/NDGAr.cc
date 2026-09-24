@@ -103,7 +103,8 @@ namespace nexus {
     //G4LogicalVolume* testbox_lv = new G4LogicalVolume(testbox_solid, materials::Copper(), "TESTBOX_LV");
     
     new G4PVPlacement (nullptr, G4ThreeVector(0., 0., 8.*m),testbox_lv,"TESTBOX", hall_logic_vol,false,0,true);
-
+     
+      
     // Define this volume as an ionization sensitive detector
     IonizationSD* sensdet_test = new IonizationSD("/NDGAR/TESTACTIVE");
     testbox_lv->SetSensitiveDetector(sensdet_test);
@@ -334,9 +335,9 @@ namespace nexus {
 
     // Adding the optical surface
     G4OpticalSurface* light_tube_optSurf =
-      new G4OpticalSurface("REFLECTOR", unified, ground, dielectric_metal);
-      //new G4OpticalSurface("REFLECTOR", glisur, ground, dielectric_metal);
-    //light_tube_optSurf->SetPolish(0.2); // if model is glisur
+      //new G4OpticalSurface("REFLECTOR", unified, ground, dielectric_metal);
+      new G4OpticalSurface("REFLECTOR", glisur, ground, dielectric_metal);
+    light_tube_optSurf->SetPolish(0.2); // if model is glisur
     light_tube_optSurf->SetMaterialPropertiesTable(opticalprops::PTFE());
 
     new G4LogicalSkinSurface("REFLECTOR", reflector_logic_vol, light_tube_optSurf);
@@ -369,10 +370,12 @@ namespace nexus {
     el_region->SetUserInformation(el_field);
     el_region->AddRootLogicalVolume(elgap_logic_vol);
 
+      /*
     // PMMA WINDOW ///////////////////////////////////////////////
     G4double r_pmma_window = active_diam;
     G4double d_pmma_window = 2.*cm;
 
+    
     G4Tubs* pmma_window_solid_vol =
       new G4Tubs("PMMA_WINDOW_SOLID", 0, r_pmma_window/2., 
                  d_pmma_window/2., 0., 360.*deg);
@@ -391,13 +394,24 @@ namespace nexus {
                       false, 1, true);
     
     
-    
+    */
     // PHOTOSENSORS /////////////////////////////////////////////////
-    const G4int n_cells = 4;
+    const G4int n_cells = 1;
 
-    const G4double sens_cell_x = 6 * mm; //6*mm
-    const G4double sens_cell_y = 6 * mm; //6*mm
+    /*
+    //SiPM Setup
+    const G4double sens_cell_x = 24.0*mm;//6 * mm; //6*mm
+    const G4double sens_cell_y = 24.0*mm;//6 * mm; //6*mm
     const G4double sens_cell_z = 2. * mm;
+    */
+
+    
+    //LAPPD Setup
+    const G4double sens_cell_x = 25.0*mm;//6 * mm; //6*mm
+    const G4double sens_cell_y = 25.0*mm;//6 * mm; //6*mm
+    const G4double sens_cell_z = 2. * mm;
+    
+
 
     const G4double sens_size_x = n_cells * sens_cell_x; //1.3 mm; //5000.*mm;
     const G4double sens_size_y = n_cells * sens_cell_y; //1.3 mm
@@ -426,7 +440,10 @@ namespace nexus {
     std::string s2;
     G4double energyAtVal;
     G4double effAtVal;
-    effs.open("data/HAM14160SensDetEff.csv");
+    //effs.open("data/HAM14160SensDetEff.csv"); // HAMAMATSU SiPM efficiency
+    //effs.open("data/new_file.csv"); // SiPM 100% efficiency
+    effs.open("data/LAPPD_Eff_sorted.csv"); // LAPPD efficiency
+    //effs.open("data/LAPPD_Eff_sorted_new.csv"); // LAPPD 100% efficiency
     while(getline(effs,line)) {
       s1 = line.substr(0,line.find(delimiter));
       line.erase(0,line.find(delimiter)+delimiter.length());
@@ -436,13 +453,23 @@ namespace nexus {
       if (effAtVal<0) effAtVal=0;
       energyEff.push_back(h_Planck*c_light /energyAtVal);
       efficiency.push_back(effAtVal / 100.);
-      //G4cout << "wl: " << energyAtVal/nm << " nm, eff: " << efficiency.back() << G4endl;
     }
     effs.close();
     std::reverse(energyEff.begin(), energyEff.end());
     std::reverse(efficiency.begin(), efficiency.end());
-    energyEff.push_back(h_Planck*c_light/(270.*nm));
-    energyEff.push_back(h_Planck*c_light/(200.*nm));
+
+    
+    //SiPM
+    //energyEff.push_back(h_Planck*c_light/(270.*nm));
+    //energyEff.push_back(h_Planck*c_light/(200.*nm));
+    
+    
+   
+    //LAPPD
+    energyEff.push_back(h_Planck*c_light/(150.*nm));
+    energyEff.push_back(h_Planck*c_light/(100.*nm));
+    
+
     efficiency.push_back(0.);
     efficiency.push_back(0.);
 
@@ -453,7 +480,8 @@ namespace nexus {
     
     
     // Set time binning
-    photosensor.SetTimeBinning(.001 * us);
+    //photosensor.SetTimeBinning(.001 * us);
+    photosensor.SetTimeBinning(0.001 * us);
 
     photosensor.SetSensorDepth(1);
     photosensor.SetMotherDepth(0);
@@ -469,7 +497,7 @@ namespace nexus {
     G4LogicalVolume* photosensor_logic_vol = photosensor.GetLogicalVolume();
 
     
-    G4double theOffset = 3.403 * mm;
+    G4double theOffset = 3.403 * mm; //3.403 * mm; //5.6*mm for SiPM fill factor to be 65.6%
     G4double sens_spacing_x = sens_size_x + theOffset;
     G4double sens_spacing_y = sens_size_y + theOffset;
 
@@ -487,12 +515,43 @@ namespace nexus {
     std::cout << "number of cells in x direction: " << N_x << std::endl;
     std::cout << "number of cells in y direction: " << N_y << std::endl;
 
+    
+    //LAPPD Module Placement
+    //8x8 module with gaps in between these 8x8 modules
+
+    G4double add_x = 0.0;
+    G4double add_y = 0.0;
+    G4double gap_module_x = 4.0*cm;//48.0*cm; 80 lappds //4 cm default
+    G4double gap_module_y = 4.0*cm;//48.0*cm; 80 lappds // 4 cm default
+    G4int total_module = 0;
+    G4int partial_module = 0;
+
+    
+    for (G4int i = 0; i < N_x - 1; i++) {
+      if(i%8 == 0){
+	add_x = add_x + gap_module_x/2;
+      }
+        sens_pos_pv_x[i] = (i - (N_x - 1) / 2.) * sens_spacing_x + sens_spacing_x / 2. + add_x;
+    }
+    for (G4int i = 0; i < N_y - 1; i++) {
+      if(i%8 == 0){
+        add_y =	add_y + gap_module_y/2;
+      }
+        sens_pos_pv_y[i] = (i - (N_y - 1) / 2.) * sens_spacing_y + sens_spacing_y / 2. + add_y;
+    }
+    
+    
+    /*
+    //SiPM Module Placement
+    //1x1 Pixels spredout uniformly
+    
     for (G4int i = 0; i < N_x - 1; i++) {
         sens_pos_pv_x[i] = (i - (N_x - 1) / 2.) * sens_spacing_x + sens_spacing_x / 2.;
     }
     for (G4int i = 0; i < N_y - 1; i++) {
         sens_pos_pv_y[i] = (i - (N_y - 1) / 2.) * sens_spacing_y + sens_spacing_y / 2.;
     }
+    */
     
     G4int sens_id = 0;
 
@@ -501,18 +560,122 @@ namespace nexus {
     // test sipm to avoid all kinds of effects. Just one single big sipm covering the whole area
     //sens_pos = G4ThreeVector(0. * mm, 0. * mm, -active_length / 2. - 1. * mm); // - d_pmma_window / 2 - 10. * cm - d_pmma_window / 2 - 1. * mm - sens_size_z / 2. - 1. * cm);
     //new G4PVPlacement(photosensor_rot, sens_pos, photosensor_logic_vol, photosensor.GetName(), ndgar_logic_vol, false, 0, true);
-    
-    
-    for (G4int i = 0; i < N_x - 1; i++) {
-        for (G4int j = 0; j < N_y - 1; j++) {
+   
+      
+    /*
+    //With complete AND incomplete modules of LAPPD
+    for (G4int i = 0; i < N_x-1;i++){//N_x - 1; i++) {
+      for (G4int j = 0; j < N_y-1;j++){//N_y - 1; j++) {
             sens_full_size = std::sqrt(std::pow(std::abs(sens_pos_pv_x[i]), 2) + std::pow(std::abs(sens_pos_pv_y[j]), 2));
             if (sens_full_size < active_diam / 2.) {
-                sens_pos = G4ThreeVector(sens_pos_pv_x[i], sens_pos_pv_y[j], -active_length / 2. - 1. * mm -d_pmma_window / 2 - 10. * cm - d_pmma_window / 2 - 1. * mm - sens_size_z / 2. - 1. * cm);
+	        sens_pos = G4ThreeVector(sens_pos_pv_x[i], sens_pos_pv_y[j], -active_length / 2. - sens_size_z / 2.);
+                //sens_pos = G4ThreeVector(sens_pos_pv_x[i], sens_pos_pv_y[j], -active_length / 2. - 1. * mm -d_pmma_window / 2 - 10. * cm - d_pmma_window / 2 - 1. * mm - sens_size_z / 2. - 1. * cm);
                 new G4PVPlacement(photosensor_rot, sens_pos, photosensor_logic_vol, photosensor.GetName(), ndgar_logic_vol, false, sens_id, false);
                 ++sens_id;
-            }
-        }
+	    }
+	}
     }
+*/
+      
+      //With complete modules ONLY of LAPPD
+      G4int x1 = 0;
+      G4int x2 = 0;
+      G4int y1 = 0;
+      G4int y2 = 0;
+      G4int num_reduced = 0; //How many circles NOT to inlcude in the LAPPD plane
+      G4int num_reduced_positive =   16 + 8*(num_reduced); //16 + 8*(num_reduced);
+      G4double sens_full_size1 = 0.0;
+      G4double sens_full_size2 = 0.0;
+      G4double sens_full_size3 = 0.0;
+      G4double sens_full_size4 = 0.0;
+      std::cout << "Y side extreme: " << num_reduced << std::endl;
+      for (G4int i = 8*num_reduced; i < N_x-1-num_reduced_positive;i=i+8){//N_x - 1; i++) {
+          x1 = i;
+          x2= i + 7;
+          for (G4int j = 8*num_reduced; j < N_y-1-num_reduced_positive;j=j+8){//N_y - 1; j++) {
+              y1 = j;
+              y2 = j + 7;
+              if ((x2 < N_x-1) && (y2 < N_y - 1)){
+                  sens_full_size1 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x1]), 2) + std::pow(std::abs(sens_pos_pv_y[y1]), 2));
+                  sens_full_size2 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x2]), 2) + std::pow(std::abs(sens_pos_pv_y[y1]), 2));
+                  sens_full_size3 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x1]), 2) + std::pow(std::abs(sens_pos_pv_y[y2]), 2));
+                  sens_full_size4 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x2]), 2) + std::pow(std::abs(sens_pos_pv_y[y2]), 2));
+                  if ((sens_full_size1 < active_diam / 2.) && (sens_full_size2 < active_diam / 2.) && (sens_full_size3 < active_diam / 2.) && (sens_full_size4 < active_diam / 2.)) {
+                      for (G4int ii = 0; ii < 8;ii++){//N_x - 1; i++) {
+                          for (G4int jj = 0; jj < 8;jj++){//N_y - 1; j++) {
+                              sens_pos = G4ThreeVector(sens_pos_pv_x[i+ii], sens_pos_pv_y[j+jj], -active_length / 2. - sens_size_z / 2.);
+                              //sens_pos = G4ThreeVector(sens_pos_pv_x[i+ii], sens_pos_pv_y[j+jj], -active_length / 2. - 1. * mm -d_pmma_window / 2 - 10. * cm - d_pmma_window / 2 - 1. * mm - sens_size_z / 2. - 1. * cm);
+                              new G4PVPlacement(photosensor_rot, sens_pos, photosensor_logic_vol, photosensor.GetName(), ndgar_logic_vol, false, sens_id, false);
+                              ++sens_id;
+                          }
+                      }
+                      ++total_module;
+                  }
+                  else if ((sens_full_size1 < active_diam / 2.) || (sens_full_size2 < active_diam / 2.) || (sens_full_size3 < active_diam / 2.) || (sens_full_size4 < active_diam / 2.)){
+                      continue;
+                      //++partial_module;
+                  }
+              }
+              else if ((x2 > N_x-1) && (y2 > N_y - 1)){
+                  if ((sens_full_size1 < active_diam / 2.)) {
+                      continue;
+                      //++partial_module;}
+                  }
+                  
+              }
+          }
+      }
+      
+      std::cout << std::endl;
+      std::cout << "Total number of complete LAPPD modules: " << (total_module) << std::endl;
+      //std::cout << "X: " << x1 << std::endl;
+      //std::cout << "Y: " << y1 << std::endl;
+      std::cout << std::endl;
+
+      
+
+    /*
+    //LAPPD Module Counting
+    G4int x1 = 0;
+    G4int x2 = 0;
+    G4int y1 = 0;
+    G4int y2 = 0;
+    G4double sens_full_size1 = 0.0;
+    G4double sens_full_size2 = 0.0;
+    G4double sens_full_size3 = 0.0;
+    G4double sens_full_size4 = 0.0;
+    for (G4int i = 0; i < N_x-1;i=i+8){//N_x - 1; i++) {
+      x1 = i;
+      x2= i + 7;
+      for (G4int j = 0; j < N_y-1;j=j+8){//N_y - 1; j++) {
+	y1 = j;
+	y2 = j + 7;
+	if ((x2 < N_x-1) && (y2 < N_y - 1)){	
+	  sens_full_size1 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x1]), 2) + std::pow(std::abs(sens_pos_pv_y[y1]), 2));
+	  sens_full_size2 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x2]), 2) + std::pow(std::abs(sens_pos_pv_y[y1]), 2));
+	  sens_full_size3 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x1]), 2) + std::pow(std::abs(sens_pos_pv_y[y2]), 2));
+	  sens_full_size4 = std::sqrt(std::pow(std::abs(sens_pos_pv_x[x2]), 2) + std::pow(std::abs(sens_pos_pv_y[y2]), 2));
+	  if ((sens_full_size1 < active_diam / 2.) && (sens_full_size2 < active_diam / 2.) && (sens_full_size3 < active_diam / 2.) && (sens_full_size4 < active_diam / 2.)) {
+	    ++total_module;
+	  }
+	  else if ((sens_full_size1 < active_diam / 2.) || (sens_full_size2 < active_diam / 2.) || (sens_full_size3 < active_diam / 2.) || (sens_full_size4 < active_diam / 2.)){
+	    ++partial_module;
+	  }
+	}
+	else if ((x2 > N_x-1) && (y2 > N_y - 1)){
+	  if ((sens_full_size1 < active_diam / 2.)) {
+            ++partial_module;}
+	}
+
+      }
+    }
+    
+
+    std::cout << std::endl;
+    std::cout << "Total number of complete LAPPD modules: " << (total_module) << std::endl;
+    std::cout << "Total number of partial LAPPD modules: " << (partial_module) << std::endl;
+    std::cout << std::endl;
+    */
     
 
     G4double sipmTotSurface = sens_id*sens_size_x*sens_size_y;
